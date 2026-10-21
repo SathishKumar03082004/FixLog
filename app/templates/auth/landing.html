@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Welcome · FixLog{% endblock %}
+{% block content %}
+<div class="text-center mb-5">
+  <p class="eyebrow mb-1">PROBLEM &amp; RESOLUTION TRACKER</p>
+  <h1 class="fw-bold">Choose how you want to sign in</h1>
+  <p class="text-secondary">Record the problem once. Find the solution next time.</p>
+</div>
+<div class="row g-4 justify-content-center">
+  {% for key, p in portals.items() %}
+  <div class="col-md-4"><div class="panel portal-card h-100 text-center">
+    <div class="portal-icon portal-{{ key }}">{{ {'user':'U','developer':'</>','admin':'A'}[key] }}</div>
+    <h2 class="h5 fw-bold mt-3">{{ key|capitalize }}</h2>
+    <p class="text-secondary small">{{ p.subtitle }}</p>
+    <a class="btn btn-primary w-100 mb-2" href="{{ p.path }}">Sign in</a>
+    {% if p.can_register %}<a class="small" href="/register?role={{ key }}">Create {{ key }} account</a>{% endif %}
+  </div></div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} · FixLog{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <div class="empty-icon">!</div>
+  <h1 class="h3 fw-bold">{{ code }}</h1>
+  <p class="text-secondary">{{ message }}</p>
+  <a href="{% if user %}/dashboard{% else %}/{% endif %}" class="btn btn-primary">Go back home</a>
+</div>
+{% endblock %}

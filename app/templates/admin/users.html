@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Manage users · FixLog{% endblock %}
+{% block content %}
+<div class="mb-4"><p class="eyebrow mb-1">ADMIN</p><h1 class="h2 fw-bold mb-1">Manage users</h1>
+  <p class="text-secondary mb-0">Approve developers, change roles, reset passwords, or disable accounts.</p></div>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<div class="panel mb-4">
+  <h2 class="h5 fw-bold mb-3">Add a user</h2>
+  <form method="post" action="/admin/users/create" class="row g-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="col-md-3"><input class="form-control" name="full_name" placeholder="Full name" value="{{ form.full_name or '' }}"></div>
+    <div class="col-md-2"><input class="form-control" name="username" placeholder="Username" required value="{{ form.username or '' }}"></div>
+    <div class="col-md-3"><input class="form-control" name="email" type="email" placeholder="Email" required value="{{ form.email or '' }}"></div>
+    <div class="col-md-2"><select class="form-select" name="role">{% for r in roles %}<option value="{{ r }}" {% if form.role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><input class="form-control" name="password" type="password" placeholder="Password" required></div>
+    <div class="col-12"><button class="btn btn-primary btn-sm" type="submit">Create user</button></div>
+  </form>
+</div>
+<div class="panel">
+  <h2 class="h5 fw-bold mb-3">All users <span class="text-secondary small">({{ users|length }})</span></h2>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>User</th><th>Role</th><th>Active</th><th>New password</th><th>Last login</th><th></th></tr></thead>
+    <tbody>{% for u in users %}
+    <tr>
+      <td><div class="fw-semibold">{{ u.display_name }}{% if u.id == user.id %} <span class="badge text-bg-light">you</span>{% endif %}</div><div class="small text-secondary">{{ u.username }} · {{ u.email }}</div></td>
+      <td><select class="form-select form-select-sm" name="role" form="uf{{ u.id }}">{% for r in roles %}<option value="{{ r }}" {% if u.role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></td>
+      <td>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="is_active" form="uf{{ u.id }}" {% if u.is_active %}checked{% endif %}></div>
+        {% if not u.is_active and not u.last_login_at %}<span class="badge text-bg-warning">pending</span>{% endif %}
+      </td>
+      <td><input class="form-control form-control-sm" type="password" name="new_password" form="uf{{ u.id }}" placeholder="optional" autocomplete="new-password"></td>
+      <td class="small text-secondary">{{ u.last_login_at.strftime('%d %b %Y %H:%M') if u.last_login_at else 'never' }}</td>
+      <td class="text-nowrap text-end">
+        <button class="btn btn-sm btn-outline-primary" type="submit" form="uf{{ u.id }}">Save</button>
+        {% if u.id != user.id %}<form method="post" action="/admin/users/{{ u.id }}/delete" class="d-inline" onsubmit="return confirm('Delete {{ u.username }}? Their issues will be kept.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form>{% endif %}
+      </td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% for u in users %}<form method="post" action="/admin/users/{{ u.id }}/update" id="uf{{ u.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"></form>{% endfor %}
+</div>
+{% endblock %}

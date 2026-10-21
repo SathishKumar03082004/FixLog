@@ -2,7 +2,7 @@
 {% block title %}All Issues · FixLog{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-  <div><p class="eyebrow mb-1">KNOWLEDGE BASE</p><h1 class="h2 fw-bold mb-1">All problems</h1><p class="text-secondary mb-0">Search past errors and reuse solutions.</p></div>
+  <div><p class="eyebrow mb-1">KNOWLEDGE BASE</p><h1 class="h2 fw-bold mb-1">{% if user.role == 'user' %}My problems{% else %}All problems{% endif %}</h1><p class="text-secondary mb-0">Search past errors and reuse solutions.</p></div>
   <a href="/issues/new" class="btn btn-primary">+ New issue</a>
 </div>
 <form method="get" action="/issues" class="panel mb-4">
@@ -19,10 +19,11 @@
   <div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 fw-bold mb-0">Issue records</h2><span class="small text-secondary">{{ issues|length }} result(s)</span></div>
   {% if issues %}
   <div class="table-responsive"><table class="table align-middle">
-    <thead><tr><th>Problem</th><th>Category</th><th>Priority</th><th>Status</th><th>Updated</th><th></th></tr></thead>
+    <thead><tr><th>Problem</th>{% if is_staff %}<th>Reporter</th>{% endif %}<th>Category</th><th>Priority</th><th>Status</th><th>Updated</th><th></th></tr></thead>
     <tbody>{% for issue in issues %}
     <tr>
       <td><a class="issue-link fw-semibold" href="/issues/{{ issue.id }}">{{ issue.title }}</a><div class="small text-secondary">#{{ issue.id }}</div></td>
+      {% if is_staff %}<td class="small">{{ issue.reporter.display_name if issue.reporter else "—" }}</td>{% endif %}
       <td>{{ issue.category }}</td>
       <td><span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
       <td><span class="badge status-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></td>

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ cfg.title }} · FixLog{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="panel">
+    <p class="eyebrow mb-1">{{ portal|upper }} PORTAL</p>
+    <h1 class="h3 fw-bold">{{ cfg.title }}</h1>
+    <p class="text-secondary">{{ cfg.subtitle }}</p>
+    {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+    <form method="post" action="{{ cfg.path }}" autocomplete="on">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="mb-3"><label class="form-label fw-semibold" for="identifier">Username or email</label>
+        <input class="form-control" id="identifier" name="identifier" value="{{ identifier }}" required autofocus></div>
+      <div class="mb-3"><label class="form-label fw-semibold" for="password">Password</label>
+        <input class="form-control" id="password" name="password" type="password" required></div>
+      <button class="btn btn-primary w-100" type="submit">Sign in</button>
+    </form>
+    <hr>
+    <div class="small text-secondary d-flex flex-wrap justify-content-between gap-2">
+      {% if cfg.can_register %}<a href="/register?role={{ portal }}">Create an account</a>{% endif %}
+      <span>Other portals:
+        {% for key, p in portals.items() if key != portal %}<a href="{{ p.path }}">{{ key|capitalize }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+      </span>
+    </div>
+  </div>
+</div>
+{% endblock %}

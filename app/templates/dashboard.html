@@ -3,11 +3,11 @@
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
   <div>
-    <p class="eyebrow mb-1">YOUR TROUBLESHOOTING WORKSPACE</p>
-    <h1 class="h2 fw-bold mb-1">Problem dashboard</h1>
+    <p class="eyebrow mb-1">{{ user.role|upper }} WORKSPACE · WELCOME, {{ user.display_name|upper }}</p>
+    <h1 class="h2 fw-bold mb-1">{% if user.role == 'user' %}My problems{% else %}Problem dashboard{% endif %}</h1>
     <p class="text-secondary mb-0">Record the problem once. Find the solution next time.</p>
   </div>
-  <a class="btn btn-primary px-4" href="/issues/new">+ Record a problem</a>
+  <a class="btn btn-primary px-4" href="/issues/new">+ Report a problem</a>
 </div>
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3"><div class="stat-card"><div class="stat-label">Total problems</div><div class="stat-number">{{ total }}</div><div class="stat-note">All recorded issues</div></div></div>
@@ -22,10 +22,11 @@
   </div>
   {% if recent_issues %}
   <div class="table-responsive"><table class="table align-middle">
-    <thead><tr><th>Problem</th><th>Priority</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Problem</th>{% if is_staff %}<th>Reporter</th>{% endif %}<th>Priority</th><th>Status</th><th></th></tr></thead>
     <tbody>{% for issue in recent_issues %}
       <tr>
         <td><a class="issue-link fw-semibold" href="/issues/{{ issue.id }}">{{ issue.title }}</a><div class="small text-secondary">{{ issue.category }} · #{{ issue.id }}</div></td>
+        {% if is_staff %}<td class="small">{{ issue.reporter.display_name if issue.reporter else "—" }}</td>{% endif %}
         <td><span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
         <td><span class="badge status-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></td>
         <td class="text-end"><a href="/issues/{{ issue.id }}" class="btn btn-sm btn-outline-secondary">Open</a></td>

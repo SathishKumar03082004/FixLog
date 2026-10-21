@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Create account · FixLog{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="panel">
+    <p class="eyebrow mb-1">NEW ACCOUNT</p>
+    <h1 class="h3 fw-bold">Create your account</h1>
+    {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+    <form method="post" action="/register">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="mb-3"><label class="form-label fw-semibold">I am a</label>
+        <select class="form-select" name="role">
+          <option value="user" {% if form.role != 'developer' %}selected{% endif %}>User (report problems)</option>
+          <option value="developer" {% if form.role == 'developer' %}selected{% endif %}>Developer (needs admin approval)</option>
+        </select></div>
+      <div class="mb-3"><label class="form-label fw-semibold" for="full_name">Full name</label>
+        <input class="form-control" id="full_name" name="full_name" maxlength="100" value="{{ form.full_name or '' }}"></div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6"><label class="form-label fw-semibold" for="username">Username</label>
+          <input class="form-control" id="username" name="username" minlength="3" maxlength="50" required value="{{ form.username or '' }}"></div>
+        <div class="col-md-6"><label class="form-label fw-semibold" for="email">Email</label>
+          <input class="form-control" id="email" name="email" type="email" maxlength="120" required value="{{ form.email or '' }}"></div>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6"><label class="form-label fw-semibold" for="password">Password</label>
+          <input class="form-control" id="password" name="password" type="password" minlength="8" required>
+          <div class="form-text">8+ characters, with a letter and a number.</div></div>
+        <div class="col-md-6"><label class="form-label fw-semibold" for="confirm_password">Confirm password</label>
+          <input class="form-control" id="confirm_password" name="confirm_password" type="password" minlength="8" required></div>
+      </div>
+      <button class="btn btn-primary w-100" type="submit">Create account</button>
+    </form>
+    <hr><div class="small text-secondary">Already registered? <a href="/login">User sign in</a> · <a href="/developer/login">Developer sign in</a></div>
+  </div>
+</div>
+{% endblock %}
