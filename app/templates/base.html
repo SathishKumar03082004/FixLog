@@ -15,6 +15,7 @@
       {% if user %}
         <a class="nav-link" href="/dashboard">Dashboard</a>
         <a class="nav-link" href="/issues">{% if user.role == 'user' %}My Issues{% else %}All Issues{% endif %}</a>
+        <a class="nav-link" href="/board">Board</a>
         {% if user.role == 'admin' %}<a class="nav-link" href="/admin/users">Users</a>{% endif %}
         <a class="btn btn-sm btn-light fw-semibold" href="/issues/new">+ New Issue</a>
         <div class="dropdown">
@@ -40,5 +41,6 @@
 </main>
 <footer class="container pb-4 text-center text-secondary small">FixLog · Keep the fix, not just the error.</footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -11,10 +11,11 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import config
 from .auth import AuthRedirect, get_current_user, hash_password
+from .board_migration import ensure_board_schema
 from .config import ROLE_ADMIN
 from .database import Base, SessionLocal, engine, ensure_database_exists, ensure_schema
 from .models import User
-from .routers import admin_routes, auth_routes, issue_routes
+from .routers import admin_routes, auth_routes, board_routes, issue_routes
 from .templating import render
 
 log = logging.getLogger("fixlog")
@@ -42,6 +43,7 @@ async def lifespan(app: FastAPI):
     ensure_database_exists()
     Base.metadata.create_all(bind=engine)  # creates `users`, and `issues` if missing
     ensure_schema()                        # adds issues.reported_by_id to old databases
+    ensure_board_schema()                  # adds assignee/blocked columns for the Kanban board
     seed_admin()
     yield
 
@@ -60,6 +62,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 app.include_router(auth_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(issue_routes.router)
+app.include_router(board_routes.router)
 
 
 @app.exception_handler(AuthRedirect)

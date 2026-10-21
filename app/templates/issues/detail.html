@@ -4,13 +4,14 @@
 <div class="mb-4"><a class="small text-secondary text-decoration-none" href="/issues">← Back to issues</a></div>
 <div class="panel mb-3">
   <div class="d-flex flex-wrap justify-content-between gap-3">
-    <div><p class="eyebrow mb-2">ISSUE #{{ issue.id }} · {{ issue.category|upper }}</p><h1 class="h2 fw-bold mb-3">{{ issue.title }}</h1><div class="d-flex flex-wrap gap-2"><span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }} priority</span><span class="badge status-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></div></div>
+    <div><p class="eyebrow mb-2">ISSUE #{{ issue.id }} · {{ issue.category|upper }}</p><h1 class="h2 fw-bold mb-3">{{ issue.title }}</h1><div class="d-flex flex-wrap gap-2"><span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }} priority</span><span class="badge status-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span>{% if issue.is_blocked %}<span class="badge text-bg-danger">Blocked</span>{% endif %}</div></div>
     <div class="d-flex align-items-start gap-2">{% if can_edit %}<a class="btn btn-outline-primary" href="/issues/{{ issue.id }}/edit">Edit issue</a>{% endif %}{% if can_delete %}<form method="post" action="/issues/{{ issue.id }}/delete" onsubmit="return confirm('Delete this issue permanently?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger" type="submit">Delete</button></form>{% endif %}</div>
   </div>
+  {% if issue.is_blocked %}<div class="alert alert-danger mt-4 mb-0"><strong>Blocked</strong>{% if issue.blocked_reason %}: {{ issue.blocked_reason }}{% endif %}</div>{% endif %}
   <hr class="my-4">
   <h2 class="h6 fw-bold">Description</h2><p class="preserve-lines">{{ issue.description }}</p>
   {% if issue.error_message %}<h2 class="h6 fw-bold mt-4">Error message / logs</h2><pre class="code-block">{{ issue.error_message }}</pre>{% endif %}
   <div class="row g-3 mt-2"><div class="col-md-6"><div class="detail-section h-100"><h2 class="h6 fw-bold">Root cause</h2>{% if issue.root_cause %}<p class="preserve-lines mb-0">{{ issue.root_cause }}</p>{% else %}<p class="text-secondary mb-0">Not recorded yet.</p>{% endif %}</div></div><div class="col-md-6"><div class="detail-section h-100"><h2 class="h6 fw-bold">Solution / resolution</h2>{% if issue.solution %}<p class="preserve-lines mb-0">{{ issue.solution }}</p>{% else %}<p class="text-secondary mb-0">Not recorded yet.</p>{% endif %}</div></div></div>
-  <div class="small text-secondary mt-4">Reported by {{ issue.reporter.display_name if issue.reporter else "unknown" }} · Created {{ issue.created_at.strftime('%d %b %Y, %H:%M') }} UTC · Last updated {{ issue.updated_at.strftime('%d %b %Y, %H:%M') }} UTC</div>
+  <div class="small text-secondary mt-4">Assigned to {{ issue.assignee.display_name if issue.assignee else "nobody yet" }} · Reported by {{ issue.reporter.display_name if issue.reporter else "unknown" }} · Created {{ issue.created_at.strftime('%d %b %Y, %H:%M') }} UTC · Last updated {{ issue.updated_at.strftime('%d %b %Y, %H:%M') }} UTC</div>
 </div>
 {% endblock %}

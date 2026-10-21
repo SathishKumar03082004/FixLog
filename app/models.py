@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -19,7 +19,8 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
 
-    issues = relationship("Issue", back_populates="reporter")
+    # Two foreign keys now point at users (reporter + assignee), so be explicit.
+    issues = relationship("Issue", foreign_keys="Issue.reported_by_id", back_populates="reporter")
 
     @property
     def display_name(self):
@@ -39,9 +40,14 @@ class Issue(Base):
     root_cause = Column(Text, default="")
     solution = Column(Text, default="")
     reported_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Kanban board fields
+    assignee_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_blocked = Column(Boolean, nullable=False, default=False, server_default=false())
+    blocked_reason = Column(String(255), nullable=False, default="", server_default="")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
 
-    reporter = relationship("User", back_populates="issues")
+    reporter = relationship("User", foreign_keys=[reported_by_id], back_populates="issues")
+    assignee = relationship("User", foreign_keys=[assignee_id])

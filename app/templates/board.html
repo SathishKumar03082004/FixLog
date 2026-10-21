@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Board · FixLog{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+  <div>
+    <p class="eyebrow mb-1">KANBAN</p>
+    <h1 class="h2 fw-bold mb-1">{% if user.role == 'user' %}My board{% else %}Issue board{% endif %}</h1>
+    <p class="text-secondary mb-0">
+      {% if can_manage %}Drag a card to change its status, or use <strong>Manage</strong> to assign or block it.{% else %}Track where your issues are in the workflow.{% endif %}
+    </p>
+  </div>
+  <a href="/issues/new" class="btn btn-primary">+ New issue</a>
+</div>
+
+<form method="get" action="/board" class="panel mb-4" id="board-filters">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-4 col-lg-3">
+      <label class="form-label small fw-semibold" for="assignee">Assignee</label>
+      <select class="form-select" id="assignee" name="assignee" onchange="this.form.submit()">
+        <option value="">Anyone</option>
+        <option value="me" {% if selected_assignee == 'me' %}selected{% endif %}>Assigned to me</option>
+        <option value="unassigned" {% if selected_assignee == 'unassigned' %}selected{% endif %}>Unassigned</option>
+        {% for a in assignees %}<option value="{{ a.id }}" {% if selected_assignee == a.id|string %}selected{% endif %}>{{ a.display_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-4 col-lg-3">
+      <label class="form-label small fw-semibold" for="priority">Priority</label>
+      <select class="form-select" id="priority" name="priority" onchange="this.form.submit()">
+        <option value="">All priorities</option>
+        {% for p in priorities %}<option value="{{ p }}" {% if selected_priority == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-6">
+      <input type="hidden" name="view" id="view-input" value="{{ view }}">
+      <div class="btn-group w-100 view-switch" role="group" aria-label="Quick view">
+        <button type="button" data-view="all" class="btn {% if view == 'all' %}btn-dark{% else %}btn-outline-secondary{% endif %}">All <span class="count" data-stat="all">{{ stats.all }}</span></button>
+        <button type="button" data-view="unfinished" class="btn {% if view == 'unfinished' %}btn-dark{% else %}btn-outline-secondary{% endif %}">Unfinished <span class="count" data-stat="unfinished">{{ stats.unfinished }}</span></button>
+        <button type="button" data-view="blocked" class="btn {% if view == 'blocked' %}btn-danger{% else %}btn-outline-danger{% endif %}">Blocked <span class="count" data-stat="blocked">{{ stats.blocked }}</span></button>
+      </div>
+    </div>
+  </div>
+  {% if selected_assignee or selected_priority or view != 'all' %}<div class="mt-2"><a class="small text-secondary" href="/board">Clear filters</a></div>{% endif %}
+</form>
+
+<div id="board-alert" class="alert alert-danger d-none" role="alert"></div>
+
+<div id="board" class="board" style="--cols: {{ columns|length }}"
+     data-csrf="{{ csrf_token }}" data-manage="{{ 'true' if can_manage else 'false' }}" data-view="{{ view }}">
+  {% for col in columns %}
+  <section class="kcol" aria-label="{{ col.status }}">
+    <header class="kcol-head">
+      <span class="kcol-dot status-{{ col.status|lower|replace(' ', '-') }}"></span>
+      <h2 class="h6 fw-bold mb-0">{{ col.status }}</h2>
+      <span class="badge text-bg-light ms-auto kcol-count" data-total="{{ col.total }}">{{ col.total }}</span>
+    </header>
+    <div class="kcol-body" data-status="{{ col.status }}">
+      {% for issue in col.cards %}
+      <article class="kcard {% if issue.is_blocked %}is-blocked{% endif %} {% if issue.status == 'Resolved' %}is-done{% endif %}"
+               data-id="{{ issue.id }}" data-status="{{ issue.status }}" data-blocked="{{ 'true' if issue.is_blocked else 'false' }}"
+               data-reason="{{ issue.blocked_reason }}" data-assignee="{{ issue.assignee_id or '' }}"
+               data-title="{{ issue.title }}"
+               {% if can_manage %}draggable="true"{% endif %}>
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+          <span class="small text-secondary">#{{ issue.id }} · {{ issue.category }}</span>
+          <span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }}</span>
+        </div>
+        <a class="issue-link fw-semibold kcard-title" draggable="false" href="/issues/{{ issue.id }}">{{ issue.title }}</a>
+        <div class="kcard-blocked small mt-2 {% if not issue.is_blocked %}d-none{% endif %}"><strong>Blocked</strong><span class="kcard-reason">{% if issue.blocked_reason %}: {{ issue.blocked_reason }}{% endif %}</span></div>
+        <div class="d-flex justify-content-between align-items-center mt-3 gap-2">
+          <span class="kcard-assignee small {% if not issue.assignee %}text-secondary{% endif %}">
+            {% if issue.assignee %}<span class="avatar">{{ issue.assignee.display_name[:1]|upper }}</span>{{ issue.assignee.display_name }}{% else %}<span class="avatar avatar-empty">?</span>Unassigned{% endif %}
+          </span>
+          {% if can_manage %}<button type="button" class="btn btn-sm btn-outline-secondary kcard-manage">Manage</button>{% endif %}
+        </div>
+      </article>
+      {% endfor %}
+      <div class="kcol-empty {% if col.cards %}d-none{% endif %}">Nothing here</div>
+      {% if col.hidden %}<a class="kcol-more small" href="/issues?status={{ col.status|urlencode }}">+ {{ col.hidden }} more not shown — view in list</a>{% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+{% if can_manage %}
+<div class="modal fade" id="manage-modal" tabindex="-1" aria-labelledby="manage-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><h2 class="modal-title h5 fw-bold" id="manage-title">Manage issue</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <p class="small text-secondary" id="manage-issue-label"></p>
+        <div class="mb-3"><label class="form-label fw-semibold" for="m-status">Status</label>
+          <select class="form-select" id="m-status">{% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></div>
+        <div class="mb-3"><label class="form-label fw-semibold" for="m-assignee">Assignee</label>
+          <select class="form-select" id="m-assignee"><option value="">Unassigned</option>{% for a in assignees %}<option value="{{ a.id }}">{{ a.display_name }} ({{ a.role }})</option>{% endfor %}</select></div>
+        <div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="m-blocked"><label class="form-check-label fw-semibold" for="m-blocked">Blocked</label></div>
+        <div id="m-reason-wrap" class="d-none"><label class="form-label small fw-semibold" for="m-reason">What is it waiting on?</label><input class="form-control" id="m-reason" maxlength="255" placeholder="e.g. Waiting for DB credentials from ops"></div>
+        <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="m-error"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="m-save">Save</button></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // Quick-view buttons: keep the current assignee/priority selection and change only the view.
+  var viewInput = document.getElementById('view-input');
+  document.querySelectorAll('.view-switch [data-view]').forEach(function (btn) {
+    btn.addEventListener('click', function () { viewInput.value = btn.dataset.view; btn.form.submit(); });
+  });
+
+  var board = document.getElementById('board');
+  if (!board) return;
+  var csrf = board.dataset.csrf;
+  var canManage = board.dataset.manage === 'true';
+  if (!canManage) return;
+
+  var alertBox = document.getElementById('board-alert');
+  var alertTimer = null;
+  function showError(msg) {
+    alertBox.textContent = msg;
+    alertBox.classList.remove('d-none');
+    clearTimeout(alertTimer);
+    alertTimer = setTimeout(function () { alertBox.classList.add('d-none'); }, 6000);
+  }
+
+  function triage(id, fields) {
+    var body = new URLSearchParams({ csrf_token: csrf });
+    Object.keys(fields).forEach(function (k) { body.set(k, fields[k]); });
+    return fetch('/api/issues/' + id + '/triage', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin',
+      body: body
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Something went wrong (' + res.status + ').');
+        return data;
+      });
+    });
+  }
+
+  // ---- counters (adjusted by delta so cards hidden by the per-column limit stay correct)
+  function bumpColumn(body, delta) {
+    var badge = body.parentElement.querySelector('.kcol-count');
+    var total = Math.max(0, parseInt(badge.dataset.total, 10) + delta);
+    badge.dataset.total = total;
+    badge.textContent = total;
+  }
+  function bumpStat(name, delta) {
+    var el = document.querySelector('[data-stat="' + name + '"]');
+    if (el) el.textContent = Math.max(0, parseInt(el.textContent, 10) + delta);
+  }
+  function refreshEmpty(body) {
+    var empty = body.querySelector('.kcol-empty');
+    empty.classList.toggle('d-none', body.querySelector('.kcard') !== null);
+  }
+
+  function applyBlocked(card, blocked, reason) {
+    card.dataset.blocked = blocked ? 'true' : 'false';
+    card.dataset.reason = reason || '';
+    card.classList.toggle('is-blocked', blocked);
+    var box = card.querySelector('.kcard-blocked');
+    box.classList.toggle('d-none', !blocked);
+    box.querySelector('.kcard-reason').textContent = reason ? ': ' + reason : '';
+  }
+
+  // ---- drag & drop
+  var dragged = null;
+  board.addEventListener('dragstart', function (e) {
+    var card = e.target.closest && e.target.closest('.kcard');
+    if (!card) return;
+    dragged = card;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', card.dataset.id);
+    setTimeout(function () { card.classList.add('dragging'); }, 0);
+  });
+  board.addEventListener('dragend', function () {
+    if (dragged) dragged.classList.remove('dragging');
+    dragged = null;
+    board.querySelectorAll('.drag-over').forEach(function (el) { el.classList.remove('drag-over'); });
+  });
+  board.addEventListener('dragover', function (e) {
+    var body = e.target.closest && e.target.closest('.kcol-body');
+    if (!body || !dragged) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    body.classList.add('drag-over');
+  });
+  board.addEventListener('dragleave', function (e) {
+    var body = e.target.closest && e.target.closest('.kcol-body');
+    if (body && !body.contains(e.relatedTarget)) body.classList.remove('drag-over');
+  });
+  board.addEventListener('drop', function (e) {
+    var target = e.target.closest && e.target.closest('.kcol-body');
+    if (!target || !dragged) return;
+    e.preventDefault();
+    target.classList.remove('drag-over');
+    moveCard(dragged, target);
+  });
+
+  function moveCard(card, target) {
+    var from = card.parentElement;
+    var oldStatus = card.dataset.status;
+    var newStatus = target.dataset.status;
+    if (from === target) return;
+
+    var next = card.nextElementSibling;           // for rollback
+    var wasBlocked = card.dataset.blocked === 'true';
+    var reason = card.dataset.reason;
+
+    // optimistic move
+    target.insertBefore(card, target.firstChild);
+    card.dataset.status = newStatus;
+    card.classList.toggle('is-done', newStatus === 'Resolved');
+    bumpColumn(from, -1); bumpColumn(target, +1);
+    refreshEmpty(from); refreshEmpty(target);
+    card.classList.add('saving');
+
+    triage(card.dataset.id, { status: newStatus }).then(function (data) {
+      // the server clears "blocked" when an issue is resolved
+      if (wasBlocked && !data.is_blocked) { applyBlocked(card, false, ''); bumpStat('blocked', -1); }
+      if (oldStatus !== 'Resolved' && newStatus === 'Resolved') bumpStat('unfinished', -1);
+      if (oldStatus === 'Resolved' && newStatus !== 'Resolved') bumpStat('unfinished', +1);
+    }).catch(function (err) {
+      // roll back
+      from.insertBefore(card, next && next.parentElement === from ? next : from.querySelector('.kcol-empty'));
+      card.dataset.status = oldStatus;
+      card.classList.toggle('is-done', oldStatus === 'Resolved');
+      bumpColumn(target, -1); bumpColumn(from, +1);
+      refreshEmpty(from); refreshEmpty(target);
+      showError('Could not move issue #' + card.dataset.id + ': ' + err.message);
+    }).then(function () { card.classList.remove('saving'); });
+  }
+
+  // ---- Manage dialog (also the keyboard / touch alternative to dragging)
+  var modalEl = document.getElementById('manage-modal');
+  var modal = new bootstrap.Modal(modalEl);
+  var mStatus = document.getElementById('m-status');
+  var mAssignee = document.getElementById('m-assignee');
+  var mBlocked = document.getElementById('m-blocked');
+  var mReason = document.getElementById('m-reason');
+  var mWrap = document.getElementById('m-reason-wrap');
+  var mError = document.getElementById('m-error');
+  var mSave = document.getElementById('m-save');
+  var current = null;
+
+  function syncReason() { mWrap.classList.toggle('d-none', !mBlocked.checked); }
+  mBlocked.addEventListener('change', function () { syncReason(); if (mBlocked.checked) mReason.focus(); });
+
+  board.addEventListener('click', function (e) {
+    var btn = e.target.closest('.kcard-manage');
+    if (!btn) return;
+    current = btn.closest('.kcard');
+    document.getElementById('manage-issue-label').textContent = '#' + current.dataset.id + ' · ' + current.dataset.title;
+    mStatus.value = current.dataset.status;
+    mAssignee.value = current.dataset.assignee || '';
+    mBlocked.checked = current.dataset.blocked === 'true';
+    mReason.value = current.dataset.reason || '';
+    mError.classList.add('d-none');
+    syncReason();
+    modal.show();
+  });
+
+  mSave.addEventListener('click', function () {
+    if (!current) return;
+    mSave.disabled = true;
+    triage(current.dataset.id, {
+      status: mStatus.value,
+      assignee_id: mAssignee.value,
+      is_blocked: mBlocked.checked ? 'true' : 'false',
+      blocked_reason: mBlocked.checked ? mReason.value : ''
+    }).then(function () {
+      location.reload();   // keeps the active filters; cards re-sort and re-filter on the server
+    }).catch(function (err) {
+      mError.textContent = err.message;
+      mError.classList.remove('d-none');
+      mSave.disabled = false;
+    });
+  });
+})();
+</script>
+{% endblock %}

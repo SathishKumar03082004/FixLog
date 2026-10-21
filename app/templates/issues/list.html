@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
   <div><p class="eyebrow mb-1">KNOWLEDGE BASE</p><h1 class="h2 fw-bold mb-1">{% if user.role == 'user' %}My problems{% else %}All problems{% endif %}</h1><p class="text-secondary mb-0">Search past errors and reuse solutions.</p></div>
-  <a href="/issues/new" class="btn btn-primary">+ New issue</a>
+  <div class="d-flex gap-2"><a href="/board" class="btn btn-outline-secondary">Board view</a><a href="/issues/new" class="btn btn-primary">+ New issue</a></div>
 </div>
 <form method="get" action="/issues" class="panel mb-4">
   <div class="row g-2">
@@ -22,7 +22,7 @@
     <thead><tr><th>Problem</th>{% if is_staff %}<th>Reporter</th>{% endif %}<th>Category</th><th>Priority</th><th>Status</th><th>Updated</th><th></th></tr></thead>
     <tbody>{% for issue in issues %}
     <tr>
-      <td><a class="issue-link fw-semibold" href="/issues/{{ issue.id }}">{{ issue.title }}</a><div class="small text-secondary">#{{ issue.id }}</div></td>
+      <td><a class="issue-link fw-semibold" href="/issues/{{ issue.id }}">{{ issue.title }}</a>{% if issue.is_blocked %} <span class="badge text-bg-danger">Blocked</span>{% endif %}<div class="small text-secondary">#{{ issue.id }}</div></td>
       {% if is_staff %}<td class="small">{{ issue.reporter.display_name if issue.reporter else "—" }}</td>{% endif %}
       <td>{{ issue.category }}</td>
       <td><span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>

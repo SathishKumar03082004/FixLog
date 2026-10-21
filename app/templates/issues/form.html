@@ -17,6 +17,11 @@
       {% endif %}
     </div>
     {% if is_staff %}
+    <div class="row g-3 mb-3">
+      <div class="col-md-6"><label class="form-label fw-semibold" for="assignee_id">Assignee</label><select class="form-select" id="assignee_id" name="assignee_id"><option value="">Unassigned</option>{% for a in assignees %}<option value="{{ a.id }}" {% if issue and issue.assignee_id == a.id %}selected{% endif %}>{{ a.display_name }} ({{ a.role }})</option>{% endfor %}</select></div>
+      <div class="col-md-6"><label class="form-label fw-semibold d-block">Blocked?</label><div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="is_blocked" name="is_blocked" value="true" {% if issue and issue.is_blocked %}checked{% endif %}><label class="form-check-label" for="is_blocked">This issue is blocked</label></div></div>
+      <div class="col-12"><label class="form-label small fw-semibold" for="blocked_reason">Blocked reason</label><input class="form-control" id="blocked_reason" name="blocked_reason" maxlength="255" value="{{ issue.blocked_reason if issue else '' }}" placeholder="What is it waiting on? (cleared automatically when resolved or unblocked)"></div>
+    </div>
     <div class="mb-3"><label class="form-label fw-semibold" for="root_cause">Root cause</label><textarea class="form-control" id="root_cause" name="root_cause" rows="2" placeholder="Why did this problem occur?">{{ issue.root_cause if issue else '' }}</textarea></div>
     <div class="mb-4"><label class="form-label fw-semibold" for="solution">Solution / resolution steps</label><textarea class="form-control" id="solution" name="solution" rows="3" placeholder="What steps fixed it? Include commands or configuration changes.">{{ issue.solution if issue else '' }}</textarea></div>
     {% else %}

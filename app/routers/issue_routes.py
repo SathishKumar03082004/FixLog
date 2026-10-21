@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth import is_staff, require_admin, require_user, verify_csrf
-from ..config import ROLE_USER
+from ..config import ROLE_ADMIN, ROLE_DEVELOPER, ROLE_USER
 from ..database import get_db
 from ..models import Issue, User
 from ..templating import flash, render
@@ -37,9 +37,45 @@ def can_edit(user: User, issue: Issue) -> bool:
     return issue.reported_by_id == user.id and issue.status != "Resolved"
 
 
-def form_context(issue, user, page_title, error=None):
+def assignable_users(db: Session):
+    """Active developers/admins - the only people an issue can be assigned to."""
+    return (
+        db.query(User)
+        .filter(User.role.in_([ROLE_DEVELOPER, ROLE_ADMIN]), User.is_active.is_(True))
+        .order_by(func.lower(User.username))
+        .all()
+    )
+
+
+def resolve_assignee(db: Session, raw):
+    """'' -> unassigned (None). Otherwise a validated active staff user id."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    if not raw.isdigit():
+        raise HTTPException(400, "Invalid assignee.")
+    target = db.get(User, int(raw))
+    if target is None or not target.is_active or not is_staff(target):
+        raise HTTPException(400, "Assignee must be an active developer or admin.")
+    return target.id
+
+
+def truthy(value) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "on", "yes"}
+
+
+def settle_blocked(issue: Issue):
+    """A resolved or un-blocked issue never carries a stale blocked reason."""
+    if issue.status == "Resolved" or not issue.is_blocked:
+        issue.is_blocked = False
+        issue.blocked_reason = ""
+
+
+def form_context(issue, user, page_title, error=None, db: Session = None):
+    assignees = assignable_users(db) if (db is not None and is_staff(user)) else []
     return {"issue": issue, "statuses": STATUSES, "priorities": PRIORITIES,
-            "categories": CATEGORIES, "page_title": page_title, "error": error}
+            "categories": CATEGORIES, "page_title": page_title, "error": error,
+            "assignees": assignees}
 
 
 def dashboard_counts(db: Session, user: User):
@@ -85,8 +121,8 @@ def list_issues(
 
 
 @router.get("/issues/new")
-def new_issue_form(request: Request, user: User = Depends(require_user)):
-    return render(request, "issues/form.html", form_context(None, user, "Create an issue"), user=user)
+def new_issue_form(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    return render(request, "issues/form.html", form_context(None, user, "Create an issue", db=db), user=user)
 
 
 @router.post("/issues/new", dependencies=[Depends(verify_csrf)])
@@ -95,12 +131,13 @@ def create_issue(
     title: str = Form(...), description: str = Form(...), error_message: str = Form(""),
     category: str = Form("Other"), priority: str = Form("Medium"), status: str = Form("Open"),
     root_cause: str = Form(""), solution: str = Form(""),
+    assignee_id: str = Form(""), is_blocked: str = Form(""), blocked_reason: str = Form(""),
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     title, description = title.strip(), description.strip()
     if not title or not description:
         return render(request, "issues/form.html",
-                      form_context(None, user, "Create an issue", "Title and description are required."),
+                      form_context(None, user, "Create an issue", "Title and description are required.", db=db),
                       status_code=400, user=user)
     if category not in CATEGORIES or priority not in PRIORITIES or status not in STATUSES:
         raise HTTPException(400, "Invalid category, priority, or status.")
@@ -109,6 +146,10 @@ def create_issue(
                   category=category, priority=priority, reported_by_id=user.id)
     if is_staff(user):  # only developers/admins may set triage fields
         issue.status, issue.root_cause, issue.solution = status, root_cause.strip(), solution.strip()
+        issue.assignee_id = resolve_assignee(db, assignee_id)
+        issue.is_blocked = truthy(is_blocked)
+        issue.blocked_reason = blocked_reason.strip()[:255]
+        settle_blocked(issue)
     db.add(issue)
     db.commit()
     db.refresh(issue)
@@ -129,7 +170,7 @@ def edit_issue_form(issue_id: int, request: Request, user: User = Depends(requir
     issue = get_issue_or_404(db, user, issue_id)
     if not can_edit(user, issue):
         raise HTTPException(403, "You cannot edit this issue.")
-    return render(request, "issues/form.html", form_context(issue, user, f"Edit issue #{issue.id}"), user=user)
+    return render(request, "issues/form.html", form_context(issue, user, f"Edit issue #{issue.id}", db=db), user=user)
 
 
 @router.post("/issues/{issue_id}/edit", dependencies=[Depends(verify_csrf)])
@@ -138,6 +179,7 @@ def update_issue(
     title: str = Form(...), description: str = Form(...), error_message: str = Form(""),
     category: str = Form("Other"), priority: str = Form("Medium"), status: str = Form("Open"),
     root_cause: str = Form(""), solution: str = Form(""),
+    assignee_id: str = Form(""), is_blocked: str = Form(""), blocked_reason: str = Form(""),
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     issue = get_issue_or_404(db, user, issue_id)
@@ -146,7 +188,7 @@ def update_issue(
     title, description = title.strip(), description.strip()
     if not title or not description:
         return render(request, "issues/form.html",
-                      form_context(issue, user, f"Edit issue #{issue.id}", "Title and description are required."),
+                      form_context(issue, user, f"Edit issue #{issue.id}", "Title and description are required.", db=db),
                       status_code=400, user=user)
     if category not in CATEGORIES or priority not in PRIORITIES or status not in STATUSES:
         raise HTTPException(400, "Invalid category, priority, or status.")
@@ -156,6 +198,10 @@ def update_issue(
     issue.category, issue.priority = category, priority
     if is_staff(user):
         issue.status, issue.root_cause, issue.solution = status, root_cause.strip(), solution.strip()
+        issue.assignee_id = resolve_assignee(db, assignee_id)
+        issue.is_blocked = truthy(is_blocked)
+        issue.blocked_reason = blocked_reason.strip()[:255]
+        settle_blocked(issue)
     db.commit()
     flash(request, "Issue updated.")
     return RedirectResponse(url=f"/issues/{issue.id}", status_code=303)
@@ -177,6 +223,8 @@ def api_list_issues(user: User = Depends(require_user), db: Session = Depends(ge
     issues = scoped(db, user).order_by(Issue.id.desc()).all()
     return [
         {"id": i.id, "title": i.title, "category": i.category, "priority": i.priority,
-         "status": i.status, "created_at": i.created_at.isoformat()}
+         "status": i.status, "is_blocked": bool(i.is_blocked),
+         "assignee": i.assignee.display_name if i.assignee else None,
+         "created_at": i.created_at.isoformat()}
         for i in issues
     ]
