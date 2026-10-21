@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} · FixLog{% endblock %}
+{% block content %}
+<div class="mb-4"><a class="small text-secondary text-decoration-none" href="/issues">← Back to issues</a><p class="eyebrow mt-3 mb-1">PROBLEM RECORD</p><h1 class="h2 fw-bold">{{ page_title }}</h1><p class="text-secondary">Capture enough detail that you—or a teammate—can solve it again.</p></div>
+<div class="panel form-panel">
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  <form method="post" action="{% if issue %}/issues/{{ issue.id }}/edit{% else %}/issues/new{% endif %}">
+    <div class="mb-3"><label class="form-label fw-semibold" for="title">Title <span class="text-danger">*</span></label><input class="form-control" id="title" name="title" maxlength="160" required value="{{ issue.title if issue else '' }}" placeholder="e.g. FastAPI form returns 422 error"></div>
+    <div class="mb-3"><label class="form-label fw-semibold" for="description">Description <span class="text-danger">*</span></label><textarea class="form-control" id="description" name="description" rows="3" required placeholder="What were you trying to do? What happened instead?">{{ issue.description if issue else '' }}</textarea></div>
+    <div class="mb-3"><label class="form-label fw-semibold" for="error_message">Error message / logs</label><textarea class="form-control code-field" id="error_message" name="error_message" rows="3" placeholder="Paste the relevant error text here">{{ issue.error_message if issue else '' }}</textarea></div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4"><label class="form-label fw-semibold" for="category">Category</label><select class="form-select" id="category" name="category">{% for value in categories %}<option value="{{ value }}" {% if (issue and issue.category == value) or (not issue and value == 'Other') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label class="form-label fw-semibold" for="priority">Priority</label><select class="form-select" id="priority" name="priority">{% for value in priorities %}<option value="{{ value }}" {% if (issue and issue.priority == value) or (not issue and value == 'Medium') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label class="form-label fw-semibold" for="status">Status</label><select class="form-select" id="status" name="status">{% for value in statuses %}<option value="{{ value }}" {% if (issue and issue.status == value) or (not issue and value == 'Open') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="mb-3"><label class="form-label fw-semibold" for="root_cause">Root cause</label><textarea class="form-control" id="root_cause" name="root_cause" rows="2" placeholder="Why did this problem occur?">{{ issue.root_cause if issue else '' }}</textarea></div>
+    <div class="mb-4"><label class="form-label fw-semibold" for="solution">Solution / resolution steps</label><textarea class="form-control" id="solution" name="solution" rows="3" placeholder="What steps fixed it? Include commands or configuration changes.">{{ issue.solution if issue else '' }}</textarea></div>
+    <div class="d-flex gap-2"><button type="submit" class="btn btn-primary px-4">{% if issue %}Save changes{% else %}Create issue{% endif %}</button><a href="{% if issue %}/issues/{{ issue.id }}{% else %}/issues{% endif %}" class="btn btn-outline-secondary">Cancel</a></div>
+  </form>
+</div>
+{% endblock %}

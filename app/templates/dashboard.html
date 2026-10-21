@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · FixLog{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+  <div>
+    <p class="eyebrow mb-1">YOUR TROUBLESHOOTING WORKSPACE</p>
+    <h1 class="h2 fw-bold mb-1">Problem dashboard</h1>
+    <p class="text-secondary mb-0">Record the problem once. Find the solution next time.</p>
+  </div>
+  <a class="btn btn-primary px-4" href="/issues/new">+ Record a problem</a>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3"><div class="stat-card"><div class="stat-label">Total problems</div><div class="stat-number">{{ total }}</div><div class="stat-note">All recorded issues</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card"><div class="stat-label">Open</div><div class="stat-number text-danger">{{ open_count }}</div><div class="stat-note">Need investigation</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card"><div class="stat-label">In progress</div><div class="stat-number text-warning">{{ progress_count }}</div><div class="stat-note">Being worked on</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card"><div class="stat-label">Resolved</div><div class="stat-number text-success">{{ resolved_count }}</div><div class="stat-note">Solution recorded</div></div></div>
+</div>
+<div class="panel">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h2 class="h5 fw-bold mb-1">Recently updated</h2><p class="text-secondary small mb-0">Your latest troubleshooting records</p></div>
+    <a href="/issues" class="text-decoration-none">View all →</a>
+  </div>
+  {% if recent_issues %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Problem</th><th>Priority</th><th>Status</th><th></th></tr></thead>
+    <tbody>{% for issue in recent_issues %}
+      <tr>
+        <td><a class="issue-link fw-semibold" href="/issues/{{ issue.id }}">{{ issue.title }}</a><div class="small text-secondary">{{ issue.category }} · #{{ issue.id }}</div></td>
+        <td><span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
+        <td><span class="badge status-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></td>
+        <td class="text-end"><a href="/issues/{{ issue.id }}" class="btn btn-sm btn-outline-secondary">Open</a></td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}
+    <div class="empty-state"><div class="empty-icon">✦</div><h3 class="h5">Your knowledge base starts here</h3><p class="text-secondary">Record your first problem and save the fix for later.</p><a href="/issues/new" class="btn btn-primary">Create first issue</a></div>
+  {% endif %}
+</div>
+{% endblock %}
