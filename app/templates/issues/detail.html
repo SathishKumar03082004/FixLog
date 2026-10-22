@@ -56,4 +56,63 @@
 
   <div class="row g-3 mt-2"><div class="col-md-6"><div class="detail-section h-100"><h2 class="h6 fw-bold">Root cause</h2>{% if issue.root_cause %}<p class="preserve-lines mb-0">{{ issue.root_cause }}</p>{% else %}<p class="text-secondary mb-0">Not recorded yet.</p>{% endif %}</div></div><div class="col-md-6"><div class="detail-section h-100"><h2 class="h6 fw-bold">Solution / resolution</h2>{% if issue.solution %}<p class="preserve-lines mb-0">{{ issue.solution }}</p>{% else %}<p class="text-secondary mb-0">Not recorded yet.</p>{% endif %}</div></div></div>
 </div>
+<section class="panel mt-4" id="discussion">
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+    <div><p class="eyebrow mb-1">COLLABORATION</p><h2 class="h4 fw-bold mb-0">Comments &amp; discussion</h2></div>
+    <span class="badge text-bg-light">{{ comments|length }} thread{{ '' if comments|length == 1 else 's' }}</span>
+  </div>
+  <form method="post" action="/issues/{{ issue.id }}/comments" class="mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="form-label fw-semibold" for="new-comment">Add a comment or debugging finding</label>
+    <textarea class="form-control mb-2" id="new-comment" name="body" rows="3" maxlength="10000" required placeholder="Share what you found, ask a question, or suggest a fix..."></textarea>
+    <button class="btn btn-primary" type="submit">Post comment</button>
+  </form>
+  {% if comments %}
+    {% for comment in comments %}
+    <article class="border rounded-3 p-3 mb-3">
+      <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+        <div><strong>{{ comment.author.display_name if comment.author else 'Former user' }}</strong><span class="text-secondary small ms-2">{{ comment.created_at.strftime('%d %b %Y, %H:%M') }} UTC{% if comment.updated_at and comment.updated_at != comment.created_at %} · edited{% endif %}</span></div>
+        {% if comment.author_id == current_user.id or current_user.role == 'admin' %}
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" type="button" onclick="document.getElementById('edit-comment-{{ comment.id }}').classList.toggle('d-none')">Edit</button>
+          <form method="post" action="/issues/{{ issue.id }}/comments/{{ comment.id }}/delete" onsubmit="return confirm('Delete this comment and its replies?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form>
+        </div>
+        {% endif %}
+      </div>
+      <p class="preserve-lines mb-2">{{ comment.body }}</p>
+      {% if comment.author_id == current_user.id or current_user.role == 'admin' %}
+      <form id="edit-comment-{{ comment.id }}" class="d-none mt-3" method="post" action="/issues/{{ issue.id }}/comments/{{ comment.id }}/edit">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><textarea class="form-control mb-2" name="body" rows="3" maxlength="10000" required>{{ comment.body }}</textarea><button class="btn btn-sm btn-primary" type="submit">Save changes</button>
+      </form>
+      {% endif %}
+      {% for reply in comment.replies %}
+      <div class="ms-3 ms-md-4 mt-3 border-start border-3 ps-3">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-1"><div><strong>{{ reply.author.display_name if reply.author else 'Former user' }}</strong><span class="text-secondary small ms-2">{{ reply.created_at.strftime('%d %b %Y, %H:%M') }} UTC{% if reply.updated_at and reply.updated_at != reply.created_at %} · edited{% endif %}</span></div>
+        {% if reply.author_id == current_user.id or current_user.role == 'admin' %}<div class="d-flex gap-2"><button class="btn btn-sm btn-outline-secondary" type="button" onclick="document.getElementById('edit-comment-{{ reply.id }}').classList.toggle('d-none')">Edit</button><form method="post" action="/issues/{{ issue.id }}/comments/{{ reply.id }}/delete" onsubmit="return confirm('Delete this reply?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form></div>{% endif %}</div>
+        <p class="preserve-lines mb-2">{{ reply.body }}</p>
+        {% if reply.author_id == current_user.id or current_user.role == 'admin' %}<form id="edit-comment-{{ reply.id }}" class="d-none mt-2" method="post" action="/issues/{{ issue.id }}/comments/{{ reply.id }}/edit"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><textarea class="form-control mb-2" name="body" rows="2" maxlength="10000" required>{{ reply.body }}</textarea><button class="btn btn-sm btn-primary" type="submit">Save changes</button></form>{% endif %}
+      </div>
+      {% endfor %}
+      <form method="post" action="/issues/{{ issue.id }}/comments" class="mt-3 ms-3 ms-md-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="parent_id" value="{{ comment.id }}"><label class="form-label small fw-semibold" for="reply-{{ comment.id }}">Reply</label><textarea class="form-control form-control-sm mb-2" id="reply-{{ comment.id }}" name="body" rows="2" maxlength="10000" required placeholder="Write a reply..."></textarea><button class="btn btn-sm btn-outline-primary" type="submit">Post reply</button>
+      </form>
+    </article>
+    {% endfor %}
+  {% else %}<p class="text-secondary mb-0">No comments yet. Start the discussion by sharing a finding or asking a question.</p>{% endif %}
+</section>
+
+<section class="panel mt-4" id="activity">
+  <p class="eyebrow mb-1">AUDIT TRAIL</p><h2 class="h4 fw-bold mb-3">Activity history</h2>
+  {% if activities %}<div class="d-flex flex-column gap-3">
+    {% for event in activities %}
+    <div class="d-flex gap-3">
+      <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center flex-shrink-0" style="width:36px;height:36px"><span class="small">{% if event.field_name == 'status' %}↻{% elif event.field_name == 'assignee' %}↗{% else %}✎{% endif %}</span></div>
+      <div class="flex-grow-1"><div><strong>{{ event.actor.display_name if event.actor else 'Former user' }}</strong>
+        {% if event.field_name == 'status' %} changed status from <span class="badge status-{{ event.old_value|lower|replace(' ', '-') }}">{{ event.old_value }}</span> to <span class="badge status-{{ event.new_value|lower|replace(' ', '-') }}">{{ event.new_value }}</span>
+        {% elif event.field_name == 'assignee' %} changed assignee from <strong>{{ event.old_value or 'Unassigned' }}</strong> to <strong>{{ event.new_value or 'Unassigned' }}</strong>
+        {% else %} {{ event.new_value }}{% endif %}</div><div class="text-secondary small">{{ event.created_at.strftime('%d %b %Y, %H:%M:%S') }} UTC</div></div>
+    </div>
+    {% endfor %}
+  </div>{% else %}<p class="text-secondary mb-0">No activity recorded yet. Status and assignee changes will appear here.</p>{% endif %}
+</section>
 {% endblock %}

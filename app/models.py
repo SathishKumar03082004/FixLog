@@ -92,3 +92,38 @@ class IssueAttachment(Base):
 
     issue = relationship("Issue", back_populates="attachments")
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class IssueComment(Base):
+    """Discussion comment or reply attached to an issue."""
+    __tablename__ = "issue_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    issue_id = Column(Integer, ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_id = Column(Integer, ForeignKey("issue_comments.id", ondelete="CASCADE"), nullable=True, index=True)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    issue = relationship("Issue")
+    author = relationship("User")
+    parent = relationship("IssueComment", remote_side=[id], back_populates="replies")
+    replies = relationship("IssueComment", back_populates="parent", cascade="all, delete-orphan", order_by="IssueComment.created_at")
+
+
+class IssueActivity(Base):
+    """Append-only audit event for important issue changes."""
+    __tablename__ = "issue_activity"
+
+    id = Column(Integer, primary_key=True, index=True)
+    issue_id = Column(Integer, ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String(50), nullable=False)
+    field_name = Column(String(50), nullable=False, default="")
+    old_value = Column(Text, nullable=False, default="")
+    new_value = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    issue = relationship("Issue")
+    actor = relationship("User")

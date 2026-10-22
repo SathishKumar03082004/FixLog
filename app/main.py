@@ -46,6 +46,8 @@ async def lifespan(app: FastAPI):
     ensure_schema()                        # adds issues.reported_by_id to old databases
     ensure_board_schema()                  # adds assignee/blocked columns for the Kanban board
     ensure_report_schema()                 # adds smart bug-report columns (steps, severity, ...)
+    # Base.metadata.create_all above creates the new issue_comments and issue_activity tables
+    # using the existing engine/database connection; existing tables are not replaced.
     seed_admin()
     yield
 

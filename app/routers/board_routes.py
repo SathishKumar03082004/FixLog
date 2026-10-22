@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..auth import is_staff, require_staff, require_user, verify_csrf
 from ..database import get_db
-from ..models import Issue, User
+from ..models import Issue, IssueActivity, User
 from ..templating import render
 from .issue_routes import (
     PRIORITIES,
@@ -138,9 +138,19 @@ def triage_issue(
     if status is not None:
         if status not in STATUSES:
             raise HTTPException(400, "Invalid status.")
-        issue.status = status
+        if issue.status != status:
+            db.add(IssueActivity(issue_id=issue.id, actor_id=user.id, action="changed", field_name="status",
+                                 old_value=issue.status, new_value=status))
+            issue.status = status
     if assignee_id is not None:
-        issue.assignee_id = resolve_assignee(db, assignee_id)
+        new_assignee_id = resolve_assignee(db, assignee_id)
+        if issue.assignee_id != new_assignee_id:
+            old_assignee = db.get(User, issue.assignee_id) if issue.assignee_id else None
+            new_assignee = db.get(User, new_assignee_id) if new_assignee_id else None
+            db.add(IssueActivity(issue_id=issue.id, actor_id=user.id, action="changed", field_name="assignee",
+                                 old_value=old_assignee.display_name if old_assignee else "Unassigned",
+                                 new_value=new_assignee.display_name if new_assignee else "Unassigned"))
+            issue.assignee_id = new_assignee_id
     if is_blocked is not None:
         issue.is_blocked = truthy(is_blocked)
     if blocked_reason is not None:

@@ -16,7 +16,7 @@ from ..bug_report import (
 )
 from ..config import ROLE_ADMIN, ROLE_DEVELOPER, ROLE_USER
 from ..database import get_db
-from ..models import Issue, User
+from ..models import Issue, IssueActivity, IssueComment, User
 from ..templating import flash, render
 
 router = APIRouter()
@@ -208,9 +208,16 @@ def create_issue(
 @router.get("/issues/{issue_id}")
 def issue_detail(issue_id: int, request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     issue = get_issue_or_404(db, user, issue_id)
+    comments = (db.query(IssueComment).filter(IssueComment.issue_id == issue.id,
+                 IssueComment.parent_id.is_(None)).options(joinedload(IssueComment.author),
+                 joinedload(IssueComment.replies).joinedload(IssueComment.author))
+                 .order_by(IssueComment.created_at.asc()).all())
+    activities = (db.query(IssueActivity).filter(IssueActivity.issue_id == issue.id)
+                  .options(joinedload(IssueActivity.actor))
+                  .order_by(IssueActivity.created_at.desc()).limit(100).all())
     return render(request, "issues/detail.html",
-                  {"issue": issue, "can_edit": can_edit(user, issue), "can_delete": user.role == "admin"},
-                  user=user)
+                  {"issue": issue, "can_edit": can_edit(user, issue), "can_delete": user.role == "admin",
+                   "comments": comments, "activities": activities, "current_user": user}, user=user)
 
 
 @router.get("/issues/{issue_id}/edit")
@@ -256,8 +263,18 @@ def update_issue(
     issue.category, issue.priority = category, priority
     apply_report(issue, report)
     if is_staff(user):
+        new_assignee_id = resolve_assignee(db, assignee_id)
+        if issue.status != status:
+            db.add(IssueActivity(issue_id=issue.id, actor_id=user.id, action="changed", field_name="status",
+                                 old_value=issue.status, new_value=status))
+        if issue.assignee_id != new_assignee_id:
+            old_assignee = db.get(User, issue.assignee_id) if issue.assignee_id else None
+            new_assignee = db.get(User, new_assignee_id) if new_assignee_id else None
+            db.add(IssueActivity(issue_id=issue.id, actor_id=user.id, action="changed", field_name="assignee",
+                                 old_value=old_assignee.display_name if old_assignee else "Unassigned",
+                                 new_value=new_assignee.display_name if new_assignee else "Unassigned"))
         issue.status, issue.root_cause, issue.solution = status, root_cause.strip(), solution.strip()
-        issue.assignee_id = resolve_assignee(db, assignee_id)
+        issue.assignee_id = new_assignee_id
         issue.is_blocked = truthy(is_blocked)
         issue.blocked_reason = blocked_reason.strip()[:255]
         settle_blocked(issue)
@@ -293,3 +310,73 @@ def api_list_issues(user: User = Depends(require_user), db: Session = Depends(ge
          "created_at": i.created_at.isoformat(), "reported_at": i.reported_at.isoformat()}
         for i in issues
     ]
+
+
+@router.post("/issues/{issue_id}/comments", dependencies=[Depends(verify_csrf)])
+def add_issue_comment(
+    issue_id: int, request: Request, body: str = Form(...), parent_id: str = Form(""),
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    issue = get_issue_or_404(db, user, issue_id)
+    body = body.strip()
+    if not body:
+        flash(request, "Comment cannot be empty.", "warning")
+        return RedirectResponse(url=f"/issues/{issue.id}#discussion", status_code=303)
+    if len(body) > 10000:
+        flash(request, "Comments must be 10,000 characters or fewer.", "warning")
+        return RedirectResponse(url=f"/issues/{issue.id}#discussion", status_code=303)
+    parent = None
+    if parent_id.strip():
+        if not parent_id.isdigit():
+            raise HTTPException(400, "Invalid reply target.")
+        parent = db.query(IssueComment).filter_by(id=int(parent_id), issue_id=issue.id).first()
+        if parent is None or parent.parent_id is not None:
+            raise HTTPException(400, "Replies must target a top-level comment on this issue.")
+    db.add(IssueComment(issue_id=issue.id, author_id=user.id, parent_id=parent.id if parent else None, body=body))
+    db.add(IssueActivity(issue_id=issue.id, actor_id=user.id, action="commented", field_name="comment",
+                         old_value="", new_value="Replied to a comment" if parent else "Added a comment"))
+    db.commit()
+    flash(request, "Reply added." if parent else "Comment added.")
+    return RedirectResponse(url=f"/issues/{issue.id}#discussion", status_code=303)
+
+
+@router.post("/issues/{issue_id}/comments/{comment_id}/edit", dependencies=[Depends(verify_csrf)])
+def edit_issue_comment(
+    issue_id: int, comment_id: int, request: Request, body: str = Form(...),
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    issue = get_issue_or_404(db, user, issue_id)
+    comment = db.query(IssueComment).filter_by(id=comment_id, issue_id=issue.id).first()
+    if comment is None:
+        raise HTTPException(404, "Comment not found.")
+    if comment.author_id != user.id and user.role != ROLE_ADMIN:
+        raise HTTPException(403, "Only the comment author or an admin can edit this comment.")
+    body = body.strip()
+    if not body or len(body) > 10000:
+        flash(request, "Comment must contain 1–10,000 characters.", "warning")
+        return RedirectResponse(url=f"/issues/{issue.id}#discussion", status_code=303)
+    comment.body = body
+    db.add(IssueActivity(issue_id=issue.id, actor_id=user.id, action="edited", field_name="comment",
+                         old_value="Comment text", new_value="Updated a comment"))
+    db.commit()
+    flash(request, "Comment updated.")
+    return RedirectResponse(url=f"/issues/{issue.id}#discussion", status_code=303)
+
+
+@router.post("/issues/{issue_id}/comments/{comment_id}/delete", dependencies=[Depends(verify_csrf)])
+def delete_issue_comment(
+    issue_id: int, comment_id: int, request: Request,
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    issue = get_issue_or_404(db, user, issue_id)
+    comment = db.query(IssueComment).filter_by(id=comment_id, issue_id=issue.id).first()
+    if comment is None:
+        raise HTTPException(404, "Comment not found.")
+    if comment.author_id != user.id and user.role != ROLE_ADMIN:
+        raise HTTPException(403, "Only the comment author or an admin can delete this comment.")
+    db.add(IssueActivity(issue_id=issue.id, actor_id=user.id, action="deleted", field_name="comment",
+                         old_value="Comment", new_value="Deleted a comment"))
+    db.delete(comment)
+    db.commit()
+    flash(request, "Comment deleted.")
+    return RedirectResponse(url=f"/issues/{issue.id}#discussion", status_code=303)
