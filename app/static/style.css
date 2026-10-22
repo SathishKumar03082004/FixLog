@@ -47,3 +47,18 @@ body { background: #f5f7fb; color: var(--ink); min-height: 100vh; }
 .avatar { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; background: #e3e9ff; color: #2c3fa8; font-size: .7rem; font-weight: 800; }
 .avatar-empty { background: #eef0f4; color: #98a2b3; }
 @media (max-width: 767px) { .board { grid-template-columns: repeat(var(--cols, 3), 85%); scroll-snap-type: x mandatory; } .kcol { scroll-snap-align: start; } }
+
+/* ---- Smart bug reports ---- */
+.severity-low { color: #256a45; background: #e5f7ed; } .severity-medium { color: #775b00; background: #fff4cc; } .severity-high { color: #a34214; background: #ffeadb; } .severity-critical { color: #a52235; background: #ffe0e5; }
+.bug-id { font-family: Consolas, "Courier New", monospace; font-weight: 700; letter-spacing: .02em; }
+.form-section-title { font-size: .8rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #4b57b8; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin: 4px 0 16px; }
+.report-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 24px; border: 1px solid var(--line); background: #fafbfe; border-radius: 12px; padding: 16px; }
+.report-meta .meta-label { display: block; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #6b7390; }
+.report-meta .meta-value { display: block; font-size: .92rem; overflow-wrap: anywhere; }
+.result-expected { border-left: 4px solid #2f9e62; } .result-actual { border-left: 4px solid #d92d45; }
+.attach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.attach-shot { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff; }
+.attach-shot img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 6px; }
+.attach-video { width: 100%; max-height: 320px; border-radius: 10px; background: #000; }
+.attach-existing { border: 1px solid var(--line); background: #fafbfe; border-radius: 10px; padding: 12px 14px; }
+.att-screenshot { color: #1d4f91; background: #e2efff; } .att-video { color: #6b2a9e; background: #f1e5ff; } .att-log { color: #3d4658; background: #e8ebf2; }

@@ -1,33 +1,100 @@
 {% extends "base.html" %}
 {% block title %}{{ page_title }} · FixLog{% endblock %}
 {% block content %}
-<div class="mb-4"><a class="small text-secondary text-decoration-none" href="/issues">← Back to issues</a><p class="eyebrow mt-3 mb-1">PROBLEM RECORD</p><h1 class="h2 fw-bold">{{ page_title }}</h1><p class="text-secondary">Capture enough detail that you—or a teammate—can solve it again.</p></div>
+{% set new_report = issue is none %}
+<div class="mb-4"><a class="small text-secondary text-decoration-none" href="{% if issue %}/issues/{{ issue.id }}{% else %}/issues{% endif %}">← Back</a><p class="eyebrow mt-3 mb-1">{% if issue %}{{ issue.bug_id }} · BUG REPORT{% else %}SMART BUG REPORT{% endif %}</p><h1 class="h2 fw-bold">{{ page_title }}</h1><p class="text-secondary">Give developers everything they need to reproduce the bug without coming back to ask you. A bug ID and report time are added automatically.</p></div>
 <div class="panel form-panel">
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
-  <form method="post" action="{% if issue %}/issues/{{ issue.id }}/edit{% else %}/issues/new{% endif %}">
+  <form method="post" enctype="multipart/form-data" action="{% if issue %}/issues/{{ issue.id }}/edit{% else %}/issues/new{% endif %}" id="bug-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div class="mb-3"><label class="form-label fw-semibold" for="title">Title <span class="text-danger">*</span></label><input class="form-control" id="title" name="title" maxlength="160" required value="{{ issue.title if issue else '' }}" placeholder="e.g. FastAPI form returns 422 error"></div>
-    <div class="mb-3"><label class="form-label fw-semibold" for="description">Description <span class="text-danger">*</span></label><textarea class="form-control" id="description" name="description" rows="3" required placeholder="What were you trying to do? What happened instead?">{{ issue.description if issue else '' }}</textarea></div>
-    <div class="mb-3"><label class="form-label fw-semibold" for="error_message">Error message / logs</label><textarea class="form-control code-field" id="error_message" name="error_message" rows="3" placeholder="Paste the relevant error text here">{{ issue.error_message if issue else '' }}</textarea></div>
+
+    <h2 class="form-section-title">1. What happened</h2>
+    <div class="mb-3"><label class="form-label fw-semibold" for="title">Title <span class="text-danger">*</span></label><input class="form-control" id="title" name="title" maxlength="160" required value="{{ f.title if f else '' }}" placeholder="Short summary, e.g. Checkout button does nothing on Safari"></div>
+    <div class="mb-3"><label class="form-label fw-semibold" for="description">Description <span class="text-danger">*</span></label><textarea class="form-control" id="description" name="description" rows="3" required placeholder="What were you trying to do, and what is the impact?">{{ f.description if f else '' }}</textarea></div>
+    <div class="mb-3"><label class="form-label fw-semibold" for="steps_to_reproduce">Steps to reproduce {% if new_report %}<span class="text-danger">*</span>{% endif %}</label><textarea class="form-control" id="steps_to_reproduce" name="steps_to_reproduce" rows="5" {% if new_report %}required{% endif %} placeholder="1. Open the cart page&#10;2. Add any item&#10;3. Click “Checkout”">{{ f.steps_to_reproduce if f and f.steps_to_reproduce else '' }}</textarea><div class="form-text">One step per line, starting from a known state (e.g. “Logged in as a normal user”).</div></div>
     <div class="row g-3 mb-3">
-      <div class="col-md-4"><label class="form-label fw-semibold" for="category">Category</label><select class="form-select" id="category" name="category">{% for value in categories %}<option value="{{ value }}" {% if (issue and issue.category == value) or (not issue and value == 'Other') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
-      <div class="col-md-4"><label class="form-label fw-semibold" for="priority">Priority</label><select class="form-select" id="priority" name="priority">{% for value in priorities %}<option value="{{ value }}" {% if (issue and issue.priority == value) or (not issue and value == 'Medium') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
-      {% if is_staff %}
-      <div class="col-md-4"><label class="form-label fw-semibold" for="status">Status</label><select class="form-select" id="status" name="status">{% for value in statuses %}<option value="{{ value }}" {% if (issue and issue.status == value) or (not issue and value == 'Open') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="col-md-6"><label class="form-label fw-semibold" for="expected_result">Expected result {% if new_report %}<span class="text-danger">*</span>{% endif %}</label><textarea class="form-control" id="expected_result" name="expected_result" rows="3" {% if new_report %}required{% endif %} placeholder="What should have happened?">{{ f.expected_result if f and f.expected_result else '' }}</textarea></div>
+      <div class="col-md-6"><label class="form-label fw-semibold" for="actual_result">Actual result {% if new_report %}<span class="text-danger">*</span>{% endif %}</label><textarea class="form-control" id="actual_result" name="actual_result" rows="3" {% if new_report %}required{% endif %} placeholder="What happened instead?">{{ f.actual_result if f and f.actual_result else '' }}</textarea></div>
+    </div>
+    <div class="mb-4"><label class="form-label fw-semibold" for="error_message">Error message / console output</label><textarea class="form-control code-field" id="error_message" name="error_message" rows="3" placeholder="Paste the exact error text or stack trace here">{{ f.error_message if f else '' }}</textarea></div>
+
+    <h2 class="form-section-title">2. Environment</h2>
+    <div class="row g-3 mb-4">
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="browser">Browser</label><input class="form-control" id="browser" name="browser" maxlength="80" value="{{ (f.browser if f and f.browser else detected.get('browser', '')) }}" placeholder="e.g. Chrome 129"></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="os_name">Operating system</label><input class="form-control" id="os_name" name="os_name" maxlength="80" value="{{ (f.os_name if f and f.os_name else detected.get('os_name', '')) }}" placeholder="e.g. Windows 11"></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="app_version">App version</label><input class="form-control" id="app_version" name="app_version" maxlength="40" value="{{ f.app_version if f else '' }}" placeholder="e.g. 2.4.1 or build 118"></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="environment">Environment</label><select class="form-select" id="environment" name="environment"><option value="">Not specified</option>{% for value in environments %}<option value="{{ value }}" {% if f and f.environment == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      {% if new_report and (detected.get('browser') or detected.get('os_name')) %}<div class="col-12"><div class="form-text mt-0">Browser and OS were detected from your current device. Change them if the bug happened somewhere else.</div></div>{% endif %}
+    </div>
+
+    <h2 class="form-section-title">3. Impact &amp; classification</h2>
+    <div class="row g-3 mb-4">
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="severity">Severity</label><select class="form-select" id="severity" name="severity">{% for value in severities %}<option value="{{ value }}" {% if (f and f.severity == value) or (not f and value == 'Medium') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select><div class="form-text">How bad is the bug itself?</div></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="priority">Priority</label><select class="form-select" id="priority" name="priority">{% for value in priorities %}<option value="{{ value }}" {% if (f and f.priority == value) or (not f and value == 'Medium') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select><div class="form-text">How soon should it be fixed?</div></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="affected_users">Affected users</label><select class="form-select" id="affected_users" name="affected_users"><option value="">Not sure</option>{% for value in affected_options %}<option value="{{ value }}" {% if f and f.affected_users == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label fw-semibold" for="category">Category</label><select class="form-select" id="category" name="category">{% for value in categories %}<option value="{{ value }}" {% if (f and f.category == value) or (not f and value == 'Other') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    </div>
+
+    <h2 class="form-section-title">4. Attachments</h2>
+    <div class="mb-4">
+      {% if issue and issue.attachments %}
+      <div class="attach-existing mb-3">
+        <div class="small fw-semibold mb-2">Current attachments <span class="text-secondary fw-normal">(tick to remove when you save)</span></div>
+        {% for a in issue.attachments %}
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="remove_attachment" value="{{ a.id }}" id="rm{{ a.id }}"><label class="form-check-label" for="rm{{ a.id }}"><span class="badge att-{{ a.kind }}">{{ a.kind }}</span> <a href="/attachments/{{ a.id }}?download=1" class="text-decoration-none">{{ a.original_name }}</a> <span class="text-secondary small">· {{ (a.size_bytes / 1024)|round(1) }} KB</span></label></div>
+        {% endfor %}
+      </div>
       {% endif %}
+      <label class="form-label fw-semibold" for="attachments">Screenshots, videos and log files</label>
+      <input class="form-control" type="file" id="attachments" name="attachments" multiple accept="{{ accept_attr }}">
+      <div class="form-text">Up to {{ max_files }} files per report. Screenshots (PNG, JPG, GIF, WebP) ≤ {{ upload_limits['screenshot'] }}, videos (MP4, WebM, MOV) ≤ {{ upload_limits['video'] }}, logs (LOG, TXT, JSON, CSV, ZIP) ≤ {{ upload_limits['log'] }}.</div>
+      <div id="file-problems" class="small text-danger mt-1" role="alert"></div>
     </div>
+
     {% if is_staff %}
+    <h2 class="form-section-title">5. Triage <span class="text-secondary fw-normal small">(developers &amp; admins)</span></h2>
     <div class="row g-3 mb-3">
-      <div class="col-md-6"><label class="form-label fw-semibold" for="assignee_id">Assignee</label><select class="form-select" id="assignee_id" name="assignee_id"><option value="">Unassigned</option>{% for a in assignees %}<option value="{{ a.id }}" {% if issue and issue.assignee_id == a.id %}selected{% endif %}>{{ a.display_name }} ({{ a.role }})</option>{% endfor %}</select></div>
-      <div class="col-md-6"><label class="form-label fw-semibold d-block">Blocked?</label><div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="is_blocked" name="is_blocked" value="true" {% if issue and issue.is_blocked %}checked{% endif %}><label class="form-check-label" for="is_blocked">This issue is blocked</label></div></div>
-      <div class="col-12"><label class="form-label small fw-semibold" for="blocked_reason">Blocked reason</label><input class="form-control" id="blocked_reason" name="blocked_reason" maxlength="255" value="{{ issue.blocked_reason if issue else '' }}" placeholder="What is it waiting on? (cleared automatically when resolved or unblocked)"></div>
+      <div class="col-md-4"><label class="form-label fw-semibold" for="status">Status</label><select class="form-select" id="status" name="status">{% for value in statuses %}<option value="{{ value }}" {% if (f and f.status == value) or (not f and value == 'Open') %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="col-md-8"><label class="form-label fw-semibold" for="assignee_id">Assignee</label><select class="form-select" id="assignee_id" name="assignee_id"><option value="">Unassigned</option>{% for a in assignees %}<option value="{{ a.id }}" {% if f and f.assignee_id == a.id %}selected{% endif %}>{{ a.display_name }} ({{ a.role }})</option>{% endfor %}</select></div>
+      <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" id="is_blocked" name="is_blocked" value="true" {% if f and f.is_blocked %}checked{% endif %}><label class="form-check-label fw-semibold" for="is_blocked">This issue is blocked</label></div></div>
+      <div class="col-12"><label class="form-label small fw-semibold" for="blocked_reason">Blocked reason</label><input class="form-control" id="blocked_reason" name="blocked_reason" maxlength="255" value="{{ f.blocked_reason if f else '' }}" placeholder="What is it waiting on? (cleared automatically when resolved or unblocked)"></div>
     </div>
-    <div class="mb-3"><label class="form-label fw-semibold" for="root_cause">Root cause</label><textarea class="form-control" id="root_cause" name="root_cause" rows="2" placeholder="Why did this problem occur?">{{ issue.root_cause if issue else '' }}</textarea></div>
-    <div class="mb-4"><label class="form-label fw-semibold" for="solution">Solution / resolution steps</label><textarea class="form-control" id="solution" name="solution" rows="3" placeholder="What steps fixed it? Include commands or configuration changes.">{{ issue.solution if issue else '' }}</textarea></div>
+    <div class="mb-3"><label class="form-label fw-semibold" for="root_cause">Root cause</label><textarea class="form-control" id="root_cause" name="root_cause" rows="2" placeholder="Why did this problem occur?">{{ f.root_cause if f else '' }}</textarea></div>
+    <div class="mb-4"><label class="form-label fw-semibold" for="solution">Solution / resolution steps</label><textarea class="form-control" id="solution" name="solution" rows="3" placeholder="What steps fixed it? Include commands or configuration changes.">{{ f.solution if f else '' }}</textarea></div>
     {% else %}
     <p class="small text-secondary mb-4">A developer will set the status, root cause and solution once they investigate.</p>
     {% endif %}
-    <div class="d-flex gap-2"><button type="submit" class="btn btn-primary px-4">{% if issue %}Save changes{% else %}Create issue{% endif %}</button><a href="{% if issue %}/issues/{{ issue.id }}{% else %}/issues{% endif %}" class="btn btn-outline-secondary">Cancel</a></div>
+    <div class="d-flex gap-2"><button type="submit" class="btn btn-primary px-4">{% if issue %}Save changes{% else %}Submit bug report{% endif %}</button><a href="{% if issue %}/issues/{{ issue.id }}{% else %}/issues{% endif %}" class="btn btn-outline-secondary">Cancel</a></div>
   </form>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var input = document.getElementById('attachments');
+  var out = document.getElementById('file-problems');
+  var form = document.getElementById('bug-form');
+  if (!input) return;
+  var limits = {{ upload_limits_bytes|tojson }};
+  var kinds = {png:'screenshot', jpg:'screenshot', jpeg:'screenshot', gif:'screenshot', webp:'screenshot',
+               mp4:'video', webm:'video', mov:'video', log:'log', txt:'log', json:'log', csv:'log', zip:'log'};
+  var maxFiles = {{ max_files }};
+  var existing = {{ (issue.attachments|length) if issue else 0 }};
+  function problems() {
+    var list = [], files = Array.prototype.slice.call(input.files || []);
+    if (existing + files.length > maxFiles) list.push('Too many files: a report can have at most ' + maxFiles + ' attachments.');
+    files.forEach(function (f) {
+      var ext = (f.name.split('.').pop() || '').toLowerCase(), kind = kinds[ext];
+      if (!kind) list.push(f.name + ': file type not allowed.');
+      else if (f.size > limits[kind]) list.push(f.name + ': too large (' + (f.size / 1048576).toFixed(1) + ' MB).');
+    });
+    return list;
+  }
+  input.addEventListener('change', function () { out.textContent = problems().join(' '); });
+  form.addEventListener('submit', function (e) {
+    var list = problems();
+    if (list.length) { e.preventDefault(); out.textContent = list.join(' '); input.focus(); }
+  });
+})();
+</script>
 {% endblock %}

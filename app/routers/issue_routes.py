@@ -1,9 +1,19 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from typing import List
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
+from ..attachments import (
+    ACCEPT_ATTR, MAX_BYTES, MAX_FILES_PER_REPORT, delete_all_files, human_size,
+    remove_attachments, save_uploads,
+)
 from ..auth import is_staff, require_admin, require_user, verify_csrf
+from ..bug_report import (
+    AFFECTED_USERS, ENVIRONMENTS, SEVERITIES, apply_report, detect_client, draft_from_form,
+    missing_required, parse_bug_id, report_choice_problem, report_form,
+)
 from ..config import ROLE_ADMIN, ROLE_DEVELOPER, ROLE_USER
 from ..database import get_db
 from ..models import Issue, User
@@ -18,7 +28,7 @@ CATEGORIES = ["Python", "Web", "Database", "Networking", "Environment", "Other"]
 
 def scoped(db: Session, user: User):
     """Plain users only ever see issues they reported; staff see everything."""
-    query = db.query(Issue).options(joinedload(Issue.reporter))
+    query = db.query(Issue).options(joinedload(Issue.reporter), selectinload(Issue.attachments))
     if user.role == ROLE_USER:
         query = query.filter(Issue.reported_by_id == user.id)
     return query
@@ -71,11 +81,22 @@ def settle_blocked(issue: Issue):
         issue.blocked_reason = ""
 
 
-def form_context(issue, user, page_title, error=None, db: Session = None):
+def form_context(issue, user, page_title, error=None, db: Session = None, draft=None, detected=None):
+    """`issue` decides the form action/attachments; `draft` (if any) supplies the field values."""
     assignees = assignable_users(db) if (db is not None and is_staff(user)) else []
-    return {"issue": issue, "statuses": STATUSES, "priorities": PRIORITIES,
+    return {"issue": issue, "f": draft if draft is not None else issue,
+            "statuses": STATUSES, "priorities": PRIORITIES,
             "categories": CATEGORIES, "page_title": page_title, "error": error,
-            "assignees": assignees}
+            "assignees": assignees, "severities": SEVERITIES, "environments": ENVIRONMENTS,
+            "affected_options": AFFECTED_USERS, "detected": detected or {},
+            "accept_attr": ACCEPT_ATTR, "max_files": MAX_FILES_PER_REPORT,
+            "upload_limits": {k: human_size(v) for k, v in MAX_BYTES.items()},
+            "upload_limits_bytes": MAX_BYTES}
+
+
+def flash_upload_result(request: Request, saved: int, errors: List[str]):
+    for message in errors:
+        flash(request, f"Attachment skipped - {message}", "warning")
 
 
 def dashboard_counts(db: Session, user: User):
@@ -98,31 +119,41 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
 @router.get("/issues")
 def list_issues(
     request: Request, q: str = "", status: str = "", priority: str = "", category: str = "",
+    severity: str = "",
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     query = scoped(db, user)
     if q.strip():
         term = f"%{q.strip()}%"
-        query = query.filter(or_(
+        conditions = [
             Issue.title.ilike(term), Issue.description.ilike(term), Issue.error_message.ilike(term),
             Issue.root_cause.ilike(term), Issue.solution.ilike(term),
-        ))
+            Issue.steps_to_reproduce.ilike(term), Issue.actual_result.ilike(term),
+        ]
+        bug_number = parse_bug_id(q)
+        if bug_number is not None:
+            conditions.append(Issue.id == bug_number)  # "BUG-00042", "#42" or "42"
+        query = query.filter(or_(*conditions))
     if status in STATUSES:
         query = query.filter(Issue.status == status)
     if priority in PRIORITIES:
         query = query.filter(Issue.priority == priority)
+    if severity in SEVERITIES:
+        query = query.filter(Issue.severity == severity)
     if category in CATEGORIES:
         query = query.filter(Issue.category == category)
     issues = query.order_by(Issue.updated_at.desc()).all()
     return render(request, "issues/list.html", {
         "issues": issues, "q": q, "selected_status": status, "selected_priority": priority,
-        "selected_category": category, "statuses": STATUSES, "priorities": PRIORITIES,
-        "categories": CATEGORIES}, user=user)
+        "selected_category": category, "selected_severity": severity, "statuses": STATUSES,
+        "priorities": PRIORITIES, "severities": SEVERITIES, "categories": CATEGORIES}, user=user)
 
 
 @router.get("/issues/new")
 def new_issue_form(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    return render(request, "issues/form.html", form_context(None, user, "Create an issue", db=db), user=user)
+    detected = detect_client(request.headers.get("user-agent", ""))
+    return render(request, "issues/form.html",
+                  form_context(None, user, "Report a bug", db=db, detected=detected), user=user)
 
 
 @router.post("/issues/new", dependencies=[Depends(verify_csrf)])
@@ -132,18 +163,33 @@ def create_issue(
     category: str = Form("Other"), priority: str = Form("Medium"), status: str = Form("Open"),
     root_cause: str = Form(""), solution: str = Form(""),
     assignee_id: str = Form(""), is_blocked: str = Form(""), blocked_reason: str = Form(""),
+    report: dict = Depends(report_form), attachments: List[UploadFile] = File(default=[]),
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     title, description = title.strip(), description.strip()
+    submitted = {"title": title, "description": description, "error_message": error_message,
+                 "category": category, "priority": priority, "status": status,
+                 "root_cause": root_cause, "solution": solution, "assignee_id": assignee_id,
+                 "is_blocked": is_blocked, "blocked_reason": blocked_reason}
+    problem = None
     if not title or not description:
+        problem = "Title and description are required."
+    else:
+        problem = missing_required(report)
+    if problem:
         return render(request, "issues/form.html",
-                      form_context(None, user, "Create an issue", "Title and description are required.", db=db),
+                      form_context(None, user, "Report a bug", problem, db=db,
+                                   draft=draft_from_form(submitted, report)),
                       status_code=400, user=user)
     if category not in CATEGORIES or priority not in PRIORITIES or status not in STATUSES:
         raise HTTPException(400, "Invalid category, priority, or status.")
+    choice_problem = report_choice_problem(report)
+    if choice_problem:
+        raise HTTPException(400, choice_problem)
 
     issue = Issue(title=title[:160], description=description, error_message=error_message.strip(),
                   category=category, priority=priority, reported_by_id=user.id)
+    apply_report(issue, report)
     if is_staff(user):  # only developers/admins may set triage fields
         issue.status, issue.root_cause, issue.solution = status, root_cause.strip(), solution.strip()
         issue.assignee_id = resolve_assignee(db, assignee_id)
@@ -153,7 +199,9 @@ def create_issue(
     db.add(issue)
     db.commit()
     db.refresh(issue)
-    flash(request, "Issue recorded.")
+    saved, upload_errors = save_uploads(db, issue, attachments, user)
+    flash_upload_result(request, saved, upload_errors)
+    flash(request, f"Bug report {issue.bug_id} recorded.")
     return RedirectResponse(url=f"/issues/{issue.id}", status_code=303)
 
 
@@ -170,7 +218,7 @@ def edit_issue_form(issue_id: int, request: Request, user: User = Depends(requir
     issue = get_issue_or_404(db, user, issue_id)
     if not can_edit(user, issue):
         raise HTTPException(403, "You cannot edit this issue.")
-    return render(request, "issues/form.html", form_context(issue, user, f"Edit issue #{issue.id}", db=db), user=user)
+    return render(request, "issues/form.html", form_context(issue, user, f"Edit {issue.bug_id}", db=db), user=user)
 
 
 @router.post("/issues/{issue_id}/edit", dependencies=[Depends(verify_csrf)])
@@ -180,6 +228,8 @@ def update_issue(
     category: str = Form("Other"), priority: str = Form("Medium"), status: str = Form("Open"),
     root_cause: str = Form(""), solution: str = Form(""),
     assignee_id: str = Form(""), is_blocked: str = Form(""), blocked_reason: str = Form(""),
+    report: dict = Depends(report_form), attachments: List[UploadFile] = File(default=[]),
+    remove_attachments_ids: List[int] = Form(default=[], alias="remove_attachment"),
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     issue = get_issue_or_404(db, user, issue_id)
@@ -187,15 +237,24 @@ def update_issue(
         raise HTTPException(403, "You cannot edit this issue.")
     title, description = title.strip(), description.strip()
     if not title or not description:
+        submitted = {"title": title, "description": description, "error_message": error_message,
+                     "category": category, "priority": priority, "status": status,
+                     "root_cause": root_cause, "solution": solution, "assignee_id": assignee_id,
+                     "is_blocked": is_blocked, "blocked_reason": blocked_reason}
         return render(request, "issues/form.html",
-                      form_context(issue, user, f"Edit issue #{issue.id}", "Title and description are required.", db=db),
+                      form_context(issue, user, f"Edit {issue.bug_id}", "Title and description are required.",
+                                   db=db, draft=draft_from_form(submitted, report)),
                       status_code=400, user=user)
     if category not in CATEGORIES or priority not in PRIORITIES or status not in STATUSES:
         raise HTTPException(400, "Invalid category, priority, or status.")
+    choice_problem = report_choice_problem(report)
+    if choice_problem:
+        raise HTTPException(400, choice_problem)
 
     issue.title, issue.description = title[:160], description
     issue.error_message = error_message.strip()
     issue.category, issue.priority = category, priority
+    apply_report(issue, report)
     if is_staff(user):
         issue.status, issue.root_cause, issue.solution = status, root_cause.strip(), solution.strip()
         issue.assignee_id = resolve_assignee(db, assignee_id)
@@ -203,7 +262,10 @@ def update_issue(
         issue.blocked_reason = blocked_reason.strip()[:255]
         settle_blocked(issue)
     db.commit()
-    flash(request, "Issue updated.")
+    remove_attachments(db, issue, remove_attachments_ids)
+    saved, upload_errors = save_uploads(db, issue, attachments, user)
+    flash_upload_result(request, saved, upload_errors)
+    flash(request, f"{issue.bug_id} updated.")
     return RedirectResponse(url=f"/issues/{issue.id}", status_code=303)
 
 
@@ -212,6 +274,7 @@ def delete_issue(issue_id: int, request: Request, admin: User = Depends(require_
     issue = db.get(Issue, issue_id)
     if issue is None:
         raise HTTPException(404, "Issue not found")
+    delete_all_files(issue)
     db.delete(issue)
     db.commit()
     flash(request, "Issue deleted.")
@@ -222,9 +285,11 @@ def delete_issue(issue_id: int, request: Request, admin: User = Depends(require_
 def api_list_issues(user: User = Depends(require_user), db: Session = Depends(get_db)):
     issues = scoped(db, user).order_by(Issue.id.desc()).all()
     return [
-        {"id": i.id, "title": i.title, "category": i.category, "priority": i.priority,
+        {"id": i.id, "bug_id": i.bug_id, "title": i.title, "category": i.category,
+         "priority": i.priority, "severity": i.severity, "environment": i.environment,
+         "affected_users": i.affected_users, "attachment_count": len(i.attachments),
          "status": i.status, "is_blocked": bool(i.is_blocked),
          "assignee": i.assignee.display_name if i.assignee else None,
-         "created_at": i.created_at.isoformat()}
+         "created_at": i.created_at.isoformat(), "reported_at": i.reported_at.isoformat()}
         for i in issues
     ]

@@ -1,17 +1,59 @@
 {% extends "base.html" %}
-{% block title %}{{ issue.title }} · FixLog{% endblock %}
+{% block title %}{{ issue.bug_id }} · {{ issue.title }} · FixLog{% endblock %}
 {% block content %}
 <div class="mb-4"><a class="small text-secondary text-decoration-none" href="/issues">← Back to issues</a></div>
 <div class="panel mb-3">
   <div class="d-flex flex-wrap justify-content-between gap-3">
-    <div><p class="eyebrow mb-2">ISSUE #{{ issue.id }} · {{ issue.category|upper }}</p><h1 class="h2 fw-bold mb-3">{{ issue.title }}</h1><div class="d-flex flex-wrap gap-2"><span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }} priority</span><span class="badge status-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span>{% if issue.is_blocked %}<span class="badge text-bg-danger">Blocked</span>{% endif %}</div></div>
-    <div class="d-flex align-items-start gap-2">{% if can_edit %}<a class="btn btn-outline-primary" href="/issues/{{ issue.id }}/edit">Edit issue</a>{% endif %}{% if can_delete %}<form method="post" action="/issues/{{ issue.id }}/delete" onsubmit="return confirm('Delete this issue permanently?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger" type="submit">Delete</button></form>{% endif %}</div>
+    <div>
+      <p class="eyebrow mb-2"><span class="bug-id">{{ issue.bug_id }}</span> · {{ issue.category|upper }}</p>
+      <h1 class="h2 fw-bold mb-3">{{ issue.title }}</h1>
+      <div class="d-flex flex-wrap gap-2">
+        <span class="badge severity-{{ issue.severity|lower }}">{{ issue.severity }} severity</span>
+        <span class="badge priority-{{ issue.priority|lower }}">{{ issue.priority }} priority</span>
+        <span class="badge status-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span>
+        {% if issue.is_blocked %}<span class="badge text-bg-danger">Blocked</span>{% endif %}
+      </div>
+    </div>
+    <div class="d-flex align-items-start gap-2">{% if can_edit %}<a class="btn btn-outline-primary" href="/issues/{{ issue.id }}/edit">Edit report</a>{% endif %}{% if can_delete %}<form method="post" action="/issues/{{ issue.id }}/delete" onsubmit="return confirm('Delete this issue permanently?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger" type="submit">Delete</button></form>{% endif %}</div>
   </div>
   {% if issue.is_blocked %}<div class="alert alert-danger mt-4 mb-0"><strong>Blocked</strong>{% if issue.blocked_reason %}: {{ issue.blocked_reason }}{% endif %}</div>{% endif %}
+
+  <div class="report-meta mt-4">
+    <div><span class="meta-label">Bug ID</span><span class="meta-value bug-id">{{ issue.bug_id }}</span></div>
+    <div><span class="meta-label">Reported</span><span class="meta-value">{{ issue.reported_at.strftime('%d %b %Y, %H:%M:%S') }} UTC</span></div>
+    <div><span class="meta-label">Reported by</span><span class="meta-value">{{ issue.reporter.display_name if issue.reporter else "unknown" }}</span></div>
+    <div><span class="meta-label">Assigned to</span><span class="meta-value">{{ issue.assignee.display_name if issue.assignee else "nobody yet" }}</span></div>
+    <div><span class="meta-label">Affected users</span><span class="meta-value">{{ issue.affected_users or "Not specified" }}</span></div>
+    <div><span class="meta-label">Environment</span><span class="meta-value">{{ issue.environment or "Not specified" }}</span></div>
+    <div><span class="meta-label">Browser</span><span class="meta-value">{{ issue.browser or "—" }}</span></div>
+    <div><span class="meta-label">Operating system</span><span class="meta-value">{{ issue.os_name or "—" }}</span></div>
+    <div><span class="meta-label">App version</span><span class="meta-value">{{ issue.app_version or "—" }}</span></div>
+    <div><span class="meta-label">Last updated</span><span class="meta-value">{{ issue.updated_at.strftime('%d %b %Y, %H:%M') }} UTC</span></div>
+  </div>
+
   <hr class="my-4">
   <h2 class="h6 fw-bold">Description</h2><p class="preserve-lines">{{ issue.description }}</p>
-  {% if issue.error_message %}<h2 class="h6 fw-bold mt-4">Error message / logs</h2><pre class="code-block">{{ issue.error_message }}</pre>{% endif %}
+
+  <h2 class="h6 fw-bold mt-4">Steps to reproduce</h2>
+  {% if issue.steps_to_reproduce %}<div class="detail-section"><div class="preserve-lines">{{ issue.steps_to_reproduce }}</div></div>{% else %}<p class="text-secondary mb-0">Not provided.</p>{% endif %}
+
+  <div class="row g-3 mt-1">
+    <div class="col-md-6"><div class="detail-section result-expected h-100"><h2 class="h6 fw-bold">Expected result</h2>{% if issue.expected_result %}<p class="preserve-lines mb-0">{{ issue.expected_result }}</p>{% else %}<p class="text-secondary mb-0">Not provided.</p>{% endif %}</div></div>
+    <div class="col-md-6"><div class="detail-section result-actual h-100"><h2 class="h6 fw-bold">Actual result</h2>{% if issue.actual_result %}<p class="preserve-lines mb-0">{{ issue.actual_result }}</p>{% else %}<p class="text-secondary mb-0">Not provided.</p>{% endif %}</div></div>
+  </div>
+
+  {% if issue.error_message %}<h2 class="h6 fw-bold mt-4">Error message / console output</h2><pre class="code-block">{{ issue.error_message }}</pre>{% endif %}
+
+  {% if issue.attachments %}
+  <h2 class="h6 fw-bold mt-4">Attachments <span class="text-secondary fw-normal">({{ issue.attachments|length }})</span></h2>
+  {% set shots = issue.attachments|selectattr('kind', 'equalto', 'screenshot')|list %}
+  {% set videos = issue.attachments|selectattr('kind', 'equalto', 'video')|list %}
+  {% set logs = issue.attachments|selectattr('kind', 'equalto', 'log')|list %}
+  {% if shots %}<div class="attach-grid mb-3">{% for a in shots %}<a class="attach-shot" href="/attachments/{{ a.id }}" target="_blank" rel="noopener"><img src="/attachments/{{ a.id }}" alt="{{ a.original_name }}" loading="lazy"><span class="small text-secondary d-block text-truncate">{{ a.original_name }}</span></a>{% endfor %}</div>{% endif %}
+  {% if videos %}<div class="row g-3 mb-3">{% for a in videos %}<div class="col-md-6"><video class="attach-video" controls preload="metadata" src="/attachments/{{ a.id }}"></video><div class="small text-secondary">{{ a.original_name }} · <a href="/attachments/{{ a.id }}?download=1">download</a></div></div>{% endfor %}</div>{% endif %}
+  {% if logs %}<ul class="list-unstyled mb-0">{% for a in logs %}<li class="mb-1"><span class="badge att-log">log</span> <a href="/attachments/{{ a.id }}?download=1" class="text-decoration-none">{{ a.original_name }}</a> <span class="small text-secondary">· {{ (a.size_bytes / 1024)|round(1) }} KB</span></li>{% endfor %}</ul>{% endif %}
+  {% endif %}
+
   <div class="row g-3 mt-2"><div class="col-md-6"><div class="detail-section h-100"><h2 class="h6 fw-bold">Root cause</h2>{% if issue.root_cause %}<p class="preserve-lines mb-0">{{ issue.root_cause }}</p>{% else %}<p class="text-secondary mb-0">Not recorded yet.</p>{% endif %}</div></div><div class="col-md-6"><div class="detail-section h-100"><h2 class="h6 fw-bold">Solution / resolution</h2>{% if issue.solution %}<p class="preserve-lines mb-0">{{ issue.solution }}</p>{% else %}<p class="text-secondary mb-0">Not recorded yet.</p>{% endif %}</div></div></div>
-  <div class="small text-secondary mt-4">Assigned to {{ issue.assignee.display_name if issue.assignee else "nobody yet" }} · Reported by {{ issue.reporter.display_name if issue.reporter else "unknown" }} · Created {{ issue.created_at.strftime('%d %b %Y, %H:%M') }} UTC · Last updated {{ issue.updated_at.strftime('%d %b %Y, %H:%M') }} UTC</div>
 </div>
 {% endblock %}

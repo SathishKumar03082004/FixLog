@@ -15,7 +15,8 @@ from .board_migration import ensure_board_schema
 from .config import ROLE_ADMIN
 from .database import Base, SessionLocal, engine, ensure_database_exists, ensure_schema
 from .models import User
-from .routers import admin_routes, auth_routes, board_routes, issue_routes
+from .report_migration import ensure_report_schema
+from .routers import admin_routes, attachment_routes, auth_routes, board_routes, issue_routes
 from .templating import render
 
 log = logging.getLogger("fixlog")
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)  # creates `users`, and `issues` if missing
     ensure_schema()                        # adds issues.reported_by_id to old databases
     ensure_board_schema()                  # adds assignee/blocked columns for the Kanban board
+    ensure_report_schema()                 # adds smart bug-report columns (steps, severity, ...)
     seed_admin()
     yield
 
@@ -63,6 +65,7 @@ app.include_router(auth_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(issue_routes.router)
 app.include_router(board_routes.router)
+app.include_router(attachment_routes.router)
 
 
 @app.exception_handler(AuthRedirect)

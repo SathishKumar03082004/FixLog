@@ -17,7 +17,7 @@
         <a class="nav-link" href="/issues">{% if user.role == 'user' %}My Issues{% else %}All Issues{% endif %}</a>
         <a class="nav-link" href="/board">Board</a>
         {% if user.role == 'admin' %}<a class="nav-link" href="/admin/users">Users</a>{% endif %}
-        <a class="btn btn-sm btn-light fw-semibold" href="/issues/new">+ New Issue</a>
+        <a class="btn btn-sm btn-light fw-semibold" href="/issues/new">+ Report Bug</a>
         <div class="dropdown">
           <a class="nav-link dropdown-toggle text-white" href="#" data-bs-toggle="dropdown">
             {{ user.display_name }} <span class="badge role-{{ user.role }}">{{ user.role }}</span>
